@@ -8,7 +8,7 @@ import java.util.Arrays;
 
 /**
  * Created by Fletcher on 15/10/2015.
- * 
+ *
  */
 public class IDAStar implements Runnable {
 
