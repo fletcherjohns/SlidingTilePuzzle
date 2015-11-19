@@ -20,6 +20,8 @@ public class PuzzleFrame extends FrameLayout {
 
     public void init(int[] goal, int columnCount) {
         int size = Math.min(
+                // Want total board size to be a multiple of columnCount
+                // could also do: getWidth() - (getWidth() % columnCount)
                 getWidth() / columnCount * columnCount,
                 getHeight() / columnCount * columnCount
         );
@@ -30,7 +32,6 @@ public class PuzzleFrame extends FrameLayout {
         );
         params.gravity = Gravity.CENTER;
         mTileArea.setLayoutParams(params);
-        mTileArea.setBackgroundColor(Color.BLUE);
         addView(mTileArea);
         invalidate();
     }

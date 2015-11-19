@@ -81,8 +81,8 @@ public class NPuzzleNode extends Node<int[], NPuzzleNode> {
     @Override
     public boolean isGoal(int[] goal) {
         return Arrays.equals(goal, getState());
-        /*for (int i = 0; i < getTileState().length; i++) {
-            if (getTileState()[i] > 0 && getTileState()[i] != goal[i]) {
+        /*for (int i = 0; i < updateState().length; i++) {
+            if (updateState()[i] > 0 && updateState()[i] != goal[i]) {
                 return false;
             }
         }
@@ -94,8 +94,8 @@ public class NPuzzleNode extends Node<int[], NPuzzleNode> {
         if (o instanceof NPuzzleNode) {
             return Arrays.equals(getState(), ((NPuzzleNode) o).getState());
             /*NPuzzleNode other = (NPuzzleNode) o;
-            for (int i = 0; i < getTileState().length; i++) {
-                if (getTileState()[i] >= 0 && getTileState()[i] != other.getTileState()[i]) {
+            for (int i = 0; i < updateState().length; i++) {
+                if (updateState()[i] >= 0 && updateState()[i] != other.updateState()[i]) {
                     return false;
                 }
             }
@@ -108,8 +108,8 @@ public class NPuzzleNode extends Node<int[], NPuzzleNode> {
     public int hashCode() {
         return Arrays.hashCode(getState());
         /*int hashCode = 0;
-        for (int i = 0; i < getTileState().length; i++) {
-            if (getTileState()[i] >= 0) hashCode += (getTileState()[i] + 1) * (i + 1) * 13;
+        for (int i = 0; i < updateState().length; i++) {
+            if (updateState()[i] >= 0) hashCode += (updateState()[i] + 1) * (i + 1) * 13;
         }
         return hashCode;*/
     }

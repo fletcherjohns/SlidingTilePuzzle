@@ -8,28 +8,38 @@ import android.widget.ImageView;
  */
 public class Tile extends ImageView {
 
-    private int mXPos;
-    private int mYPos;
+    private int mValue;
+    private float mXPos;
+    private float mYPos;
 
-    public Tile(Context context, int xPos, int yPos) {
+    public Tile(Context context, float XPos, float YPos, int value) {
         super(context);
-        mXPos = xPos;
-        mYPos = yPos;
-    }
-
-    public int getXPos() {
-        return mXPos;
-    }
-
-    public void setXPos(int XPos) {
+        mValue = value;
+        mYPos = YPos;
         mXPos = XPos;
     }
 
-    public int getYPos() {
+    public int getValue() {
+        return mValue;
+    }
+
+    public void setValue(int value) {
+        mValue = value;
+    }
+
+    public float getXPos() {
+        return mXPos;
+    }
+
+    public void setXPos(float XPos) {
+        mXPos = XPos;
+    }
+
+    public float getYPos() {
         return mYPos;
     }
 
-    public void setYPos(int YPos) {
+    public void setYPos(float YPos) {
         mYPos = YPos;
     }
 
@@ -37,7 +47,7 @@ public class Tile extends ImageView {
         return Math.round(mXPos);
     }
 
-    public int getRoundexYPos() {
+    public int getRoundedYPos() {
         return Math.round(mYPos);
     }
 }
