@@ -30,7 +30,6 @@ public class TileArea extends ViewGroup {
     private int mTileSize;
     private Paint mPaint;
     private Tile mSelectedTile;
-    private Thread mSnapThread;
     private Callback mCallback;
     private Rect mMoveBounds;
     private float mTouchOffsetX;
@@ -69,8 +68,13 @@ public class TileArea extends ViewGroup {
         });
     }
 
+    public void setCallback(Callback callback) {
+        mCallback = callback;
+    }
+
     public void updateState() {
         Tile tile;
+        mState = new int[mState.length];
         for (int i = 0; i < getChildCount(); i++) {
             tile = (Tile) getChildAt(i);
             mState[tile.getRoundedXPos() + tile.getRoundedYPos() * mColumnCount] = tile.getValue();
@@ -78,35 +82,49 @@ public class TileArea extends ViewGroup {
     }
 
     private void movePieceTo(float x, float y) {
+
         mSelectedTile.setXPos(
                 Math.max(mMoveBounds.left,
-                        Math.min(mMoveBounds.right, x)));
+                        Math.min(mMoveBounds.right, x)) / mTileSize);
         mSelectedTile.setYPos(
                 Math.max(mMoveBounds.top,
-                        Math.min(mMoveBounds.bottom, y)));
+                        Math.min(mMoveBounds.bottom, y)) / mTileSize);
     }
 
     private void calculateBounds() {
         int blankIndex = ArrayUtils.indexOf(mState, 0);
+        Log.v("tag", "blankIndex = " + blankIndex);
         int blankX = blankIndex % mColumnCount * mTileSize;
         int blankY = blankIndex / mColumnCount * mTileSize;
+        Log.v("tag", "blankX = " + blankX + ", blankY = " + blankY);
+        Log.v("tag", "tileX = " + mSelectedTile.getRoundedXPos() + ", tileY = " + mSelectedTile.getRoundedYPos());
         int tileX = mSelectedTile.getRoundedXPos() * mTileSize;
         int tileY = mSelectedTile.getRoundedYPos() * mTileSize;
 
+        /*
+        It may appear wrong at first as this Rect is initialized as a point, not a rectangle.
+        Bounds do not represent the bounds of the tile. It is the range that the top left corner
+        of the tile can move. It will only ever be a horizontal or vertical line mTileSize long,
+        but is easily represented by a Rect.
+         */
         mMoveBounds = new Rect(
                 tileX,
                 tileY,
-                tileX + mTileSize,
-                tileY + mTileSize);
+                tileX,
+                tileY);
 
-        if (blankX == mSelectedTile.getRoundedXPos() - 1) {
+        if (blankY == tileY && blankX == tileX - mTileSize) {
+            Log.v("tag", "blank to left");
             mMoveBounds.left = blankX;
-        } else if (blankY == mSelectedTile.getRoundedYPos() - 1) {
+        } else if (blankX == tileX && blankY == tileY - mTileSize) {
+            Log.v("tag", "blank above");
             mMoveBounds.top = blankY;
-        } else if (blankX == mSelectedTile.getRoundedXPos() + 1) {
-            mMoveBounds.right = blankX + mTileSize;
-        } else if (blankY == mSelectedTile.getRoundedYPos()) {
-            mMoveBounds.bottom = blankY + mTileSize;
+        } else if (blankY == tileY && blankX == tileX + mTileSize) {
+            Log.v("tag", "blank to right");
+            mMoveBounds.right = blankX;
+        } else if (blankX == tileX && blankY == tileY + mTileSize) {
+            Log.v("tag", "blank below");
+            mMoveBounds.bottom = blankY;
         }
     }
 
@@ -178,19 +196,16 @@ public class TileArea extends ViewGroup {
         switch (event.getActionMasked()) {
 
             case MotionEvent.ACTION_DOWN:
-                Tile touchedPiece;
                 // Sorry I'm a big fan of assigning variables inside of equality checks, maybe I overdo it:
-                if ((touchedPiece = intersectsView(event.getX(), event.getY())) != null
-                        && mSnapThread != null) {
-                    Log.v("tag", "interrupting...................");
-                    mSnapThread.interrupt();
-                } else if ((mSelectedTile = touchedPiece) == null) {
+                if ((mSelectedTile = intersectsView(event.getX(), event.getY())) == null) {
                     Log.v("tag", "nothing intersected");
                     return false;
                 } else {
                     Log.v("tag", "intersected tile" + mSelectedTile.getValue());
+                    mSelectedTile.interruptThread();
                     mTouchOffsetX = event.getX() - mSelectedTile.getX();
                     mTouchOffsetY = event.getY() - mSelectedTile.getY();
+                    Log.v("tag", "TouchOffsetX = " + mTouchOffsetX + ", TouchOffsetY = " + mTouchOffsetY);
                     calculateBounds();
                     Log.v("tag", "bounds: " + mMoveBounds.left + ", " + mMoveBounds.top + ", " + mMoveBounds.right + ", " + mMoveBounds.bottom);
                     return true;
@@ -199,7 +214,7 @@ public class TileArea extends ViewGroup {
             case MotionEvent.ACTION_MOVE:
                 int size = event.getHistorySize();
                 movePieceTo(event.getX() - mTouchOffsetX, event.getY() - mTouchOffsetY);
-                invalidate();
+                requestLayout();
                 if (size > 0) {
                     long time = event.getEventTime() - event.getHistoricalEventTime(size - 1);
                     Log.v("tag", "event time = " + time);
@@ -219,7 +234,7 @@ public class TileArea extends ViewGroup {
                 if (mVelocityX > mFlingVelocity || mVelocityY > mFlingVelocity) {
                     Log.v("tag", "FLING!!! x: " + mVelocityX + ", y: " + mVelocityY);
                 }
-                (mSnapThread = new SnapThread()).start();
+                mSelectedTile.startThread();
                 updateState();
                 mCallback.stateChanged(mState);
                 return true;
@@ -228,60 +243,6 @@ public class TileArea extends ViewGroup {
         }
     }
 
-    private class SnapThread extends Thread {
-
-        private Tile mPiece;
-        private float mVelocity;
-        private int mSnapTo;
-
-        public SnapThread() {
-            mPiece = mSelectedTile;
-        }
-
-        @Override
-        public void run() {
-            super.run();
-            if (mPiece.getX() % mPiece.getWidth() != 0) {
-                mSnapTo = Math.round(mPiece.getX() / mPiece.getWidth())
-                        * mPiece.getWidth();
-                while (Math.abs(mPiece.getX() - mSnapTo) > 1) {
-                    mVelocity = (mSnapTo - mPiece.getX()) / 5;
-                    mPiece.setX(mPiece.getX() + mVelocity);
-                    try {
-                        sleep(25);
-                    } catch (InterruptedException e) {
-                        e.printStackTrace();
-                        return;
-                    }
-                }
-                mPiece.setX(mSnapTo);
-            }
-            if (mPiece.getY() % mPiece.getWidth() != 0) {
-                mSnapTo = Math.round(mPiece.getY() / mPiece.getWidth())
-                        * mPiece.getWidth();
-                while (Math.abs(mPiece.getY() - mSnapTo) > 1) {
-                    mVelocity = (mSnapTo - mPiece.getY()) / 5;
-                    mPiece.setY(mPiece.getY() + mVelocity);
-                    try {
-                        sleep(10);
-                    } catch (InterruptedException e) {
-                        Log.v("tag", "I've been interrupted :(");
-                        e.printStackTrace();
-                        return;
-                    }
-                }
-                mPiece.setY(mSnapTo);
-            }
-            if (Arrays.equals(mGoal, mState)) {
-                post(new Runnable() {
-                    @Override
-                    public void run() {
-                        Toast.makeText(getContext(), "Winner!!", Toast.LENGTH_SHORT).show();
-                    }
-                });
-            }
-        }
-    }
 
     public interface Callback {
         void stateChanged(int[] state);

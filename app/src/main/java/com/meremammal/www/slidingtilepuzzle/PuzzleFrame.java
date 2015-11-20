@@ -18,7 +18,7 @@ public class PuzzleFrame extends FrameLayout {
 
     }
 
-    public void init(int[] goal, int columnCount) {
+    public void init(int[] goal, int columnCount, TileArea.Callback callback) {
         int size = Math.min(
                 // Want total board size to be a multiple of columnCount
                 // could also do: getWidth() - (getWidth() % columnCount)
@@ -26,6 +26,7 @@ public class PuzzleFrame extends FrameLayout {
                 getHeight() / columnCount * columnCount
         );
         mTileArea = new TileArea(getContext(), goal, columnCount);
+        mTileArea.setCallback(callback);
         FrameLayout.LayoutParams params = new LayoutParams(
                 size,
                 size
