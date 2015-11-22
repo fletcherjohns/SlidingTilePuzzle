@@ -11,17 +11,35 @@ import android.view.MotionEvent;
 import android.view.ViewConfiguration;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
-import android.widget.Toast;
+
+import com.meremammal.www.slidingtilepuzzle.search_algorithms.Heuristic;
 
 import org.apache.commons.lang3.ArrayUtils;
 
-import java.util.Arrays;
+import java.util.Random;
 
 /**
  * Created by Fletcher on 18/11/2015.
+ *
+ * <p>It utilizes a {@link com.meremammal.www.slidingtilepuzzle.search_algorithms.Heuristic} to
+ * solve the puzzle. </p>
  */
 public class TileArea extends ViewGroup {
 
+    /*
+    TODO Need to implement either a boolean field mBusy or use the State Machine pattern to allow
+      this ViewGroup to run background threads to shuffle or solve the tiles and block any touch
+      input or button presses coming from the Activity. Simplest way is to set mBusy and use an
+      if(!mBusy) in the onTouchEvent() method. Create method to move a tile from current position
+      to blank. Create method to move many tiles in series (shuffle). ie: loop (move random tile
+      adjacent to blank). Must keep track of last tile moved to avoid moving the same tile back and
+      forth.
+      Create public methods to be called from the Activity to start mThread to run shuffle or solve
+      methods. Set mBusy to true while thread is running and set to false when finished. Again use
+      if (!mBusy) to ignore call when thread already running.
+      *** Could also just use if (mThread != null && mThread.isAlive()) to check if the thread is
+      * already in process.
+     */
     private static int mFlingVelocity;
 
     private final int[] mGoal;
@@ -31,27 +49,24 @@ public class TileArea extends ViewGroup {
     private Paint mPaint;
     private Tile mSelectedTile;
     private Callback mCallback;
-    private Rect mMoveBounds;
     private float mTouchOffsetX;
     private float mTouchOffsetY;
-    private float mVelocityX;
-    private float mVelocityY;
+    private Heuristic<int[]> mHeuristic;
 
-    public TileArea(Context context, final int[] goal, int columnCount) {
+    public TileArea(Context context, final int[] goal, int columnCount, Heuristic<int[]> heuristic) {
         super(context);
         mFlingVelocity = ViewConfiguration.get(context).getScaledMinimumFlingVelocity();
 
         mState = mGoal = goal;
         mColumnCount = columnCount;
+        mHeuristic = heuristic;
         mPaint = new Paint();
         mPaint.setAntiAlias(true);
-        mMoveBounds = new Rect();
         post(new Runnable() {
             @Override
             public void run() {
 
                 mTileSize = getWidth() / mColumnCount;
-                //Log.v("tag", "tileSize = " + mTileSize);
                 FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(mTileSize, mTileSize);
                 Tile tile;
                 for (int i = 0; i < mGoal.length; i++) {
@@ -60,7 +75,6 @@ public class TileArea extends ViewGroup {
                         tile.setLayoutParams(params);
                         tile.setBackgroundColor(Color.BLUE);
                         tile.setImageBitmap(getBitmap(mGoal[i]));
-                        //tile.setDrawingCacheEnabled(true);
                         addView(tile);
                     }
                 }
@@ -81,23 +95,13 @@ public class TileArea extends ViewGroup {
         }
     }
 
-    private void movePieceTo(float x, float y) {
 
-        mSelectedTile.setXPos(
-                Math.max(mMoveBounds.left,
-                        Math.min(mMoveBounds.right, x)) / mTileSize);
-        mSelectedTile.setYPos(
-                Math.max(mMoveBounds.top,
-                        Math.min(mMoveBounds.bottom, y)) / mTileSize);
-    }
+    private void setTileBounds() {
 
-    private void calculateBounds() {
+        Rect bounds;
         int blankIndex = ArrayUtils.indexOf(mState, 0);
-        Log.v("tag", "blankIndex = " + blankIndex);
         int blankX = blankIndex % mColumnCount * mTileSize;
         int blankY = blankIndex / mColumnCount * mTileSize;
-        Log.v("tag", "blankX = " + blankX + ", blankY = " + blankY);
-        Log.v("tag", "tileX = " + mSelectedTile.getRoundedXPos() + ", tileY = " + mSelectedTile.getRoundedYPos());
         int tileX = mSelectedTile.getRoundedXPos() * mTileSize;
         int tileY = mSelectedTile.getRoundedYPos() * mTileSize;
 
@@ -107,25 +111,22 @@ public class TileArea extends ViewGroup {
         of the tile can move. It will only ever be a horizontal or vertical line mTileSize long,
         but is easily represented by a Rect.
          */
-        mMoveBounds = new Rect(
+        bounds = new Rect(
                 tileX,
                 tileY,
                 tileX,
                 tileY);
 
         if (blankY == tileY && blankX == tileX - mTileSize) {
-            Log.v("tag", "blank to left");
-            mMoveBounds.left = blankX;
+            bounds.left = blankX;
         } else if (blankX == tileX && blankY == tileY - mTileSize) {
-            Log.v("tag", "blank above");
-            mMoveBounds.top = blankY;
+            bounds.top = blankY;
         } else if (blankY == tileY && blankX == tileX + mTileSize) {
-            Log.v("tag", "blank to right");
-            mMoveBounds.right = blankX;
+            bounds.right = blankX;
         } else if (blankX == tileX && blankY == tileY + mTileSize) {
-            Log.v("tag", "blank below");
-            mMoveBounds.bottom = blankY;
+            bounds.bottom = blankY;
         }
+        mSelectedTile.setBounds(bounds);
     }
 
     private Tile intersectsView(float x, float y) {
@@ -178,8 +179,7 @@ public class TileArea extends ViewGroup {
             tile = (Tile) getChildAt(i);
             left = (int) (tile.getXPos() * mTileSize);
             top = (int) (tile.getYPos() * mTileSize);
-            Log.v("tag", "tile" + tile.getValue() + ".layout(" +
-                    left + ", " + top + ", " + (left + mTileSize) + ", " + (top + mTileSize) + ")");
+
             tile.layout(
                     left,
                     top,
@@ -187,8 +187,8 @@ public class TileArea extends ViewGroup {
                     top + mTileSize
             );
         }
-        //invalidate();
     }
+
     @Override
     public boolean onTouchEvent(MotionEvent event) {
 
@@ -198,42 +198,21 @@ public class TileArea extends ViewGroup {
             case MotionEvent.ACTION_DOWN:
                 // Sorry I'm a big fan of assigning variables inside of equality checks, maybe I overdo it:
                 if ((mSelectedTile = intersectsView(event.getX(), event.getY())) == null) {
-                    Log.v("tag", "nothing intersected");
                     return false;
                 } else {
-                    Log.v("tag", "intersected tile" + mSelectedTile.getValue());
                     mSelectedTile.interruptThread();
                     mTouchOffsetX = event.getX() - mSelectedTile.getX();
                     mTouchOffsetY = event.getY() - mSelectedTile.getY();
-                    Log.v("tag", "TouchOffsetX = " + mTouchOffsetX + ", TouchOffsetY = " + mTouchOffsetY);
-                    calculateBounds();
-                    Log.v("tag", "bounds: " + mMoveBounds.left + ", " + mMoveBounds.top + ", " + mMoveBounds.right + ", " + mMoveBounds.bottom);
+                    setTileBounds();
                     return true;
                 }
 
             case MotionEvent.ACTION_MOVE:
-                int size = event.getHistorySize();
-                movePieceTo(event.getX() - mTouchOffsetX, event.getY() - mTouchOffsetY);
+                mSelectedTile.moveTo(event.getX() - mTouchOffsetX, event.getY() - mTouchOffsetY);
                 requestLayout();
-                if (size > 0) {
-                    long time = event.getEventTime() - event.getHistoricalEventTime(size - 1);
-                    Log.v("tag", "event time = " + time);
-                    try {
-                        mVelocityX = (event.getX() - event.getHistoricalX(size - 1)) / time;
-                        mVelocityY = (event.getY() - event.getHistoricalY(size - 1)) / time;
-                        Log.v("tag", "mVelocityX = " + mVelocityX + ", mVelocityY = " + mVelocityY);
-                    } catch (Exception | Error e) {
-                        Log.e("tag", e.toString());
-                    }
-                } else {
-                    mVelocityX = mVelocityY = 0;
-                }
                 return true;
 
             case MotionEvent.ACTION_UP:
-                if (mVelocityX > mFlingVelocity || mVelocityY > mFlingVelocity) {
-                    Log.v("tag", "FLING!!! x: " + mVelocityX + ", y: " + mVelocityY);
-                }
                 mSelectedTile.startThread();
                 updateState();
                 mCallback.stateChanged(mState);
@@ -243,6 +222,74 @@ public class TileArea extends ViewGroup {
         }
     }
 
+    public void shuffleTiles() {
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                int blankIndex, blankX, blankY, tileX, tileY, direction;
+                int lastDirection = -1;
+
+                Random r = new Random();
+                int count = 80;
+                while (count > 0) {
+                    blankIndex = ArrayUtils.indexOf(mState, 0);
+                    blankX = tileX = blankIndex % mColumnCount;
+                    blankY = tileY = blankIndex / mColumnCount;
+                    direction = r.nextInt(4);
+                    switch (direction) {
+                        case 0:
+                            if (blankX > 0 && lastDirection != 1) {
+                                Log.v("tag", "direction: " + direction);
+                                tileX = blankX - 1;
+                                count--;
+                                break;
+                            }
+                            continue;
+                        case 1:
+                            if (blankX < mColumnCount - 1 && lastDirection != 0) {
+                                Log.v("tag", "direction: " + direction);
+                                tileX = blankX + 1;
+                                count--;
+                                break;
+                            }
+                            continue;
+                        case 2:
+                            if (blankY > 0 && lastDirection != 3) {
+                                Log.v("tag", "direction: " + direction);
+                                tileY = blankY - 1;
+                                count--;
+                                break;
+                            }
+                            continue;
+                        case 3:
+                            if (blankY < (mState.length / mColumnCount) - 1 && lastDirection != 2) {
+                                Log.v("tag", "direction: " + direction);
+                                tileY = blankY + 1;
+                                count--;
+                                break;
+                            }
+                            continue;
+                    }
+
+                    lastDirection = direction;
+                    for (int i = 0; i < getChildCount(); i++) {
+                        mSelectedTile = (Tile) getChildAt(i);
+                        while (mSelectedTile.isMoving()) {
+                            // just wait
+                        }
+                        if (mSelectedTile.getRoundedXPos() == tileX &&
+                                mSelectedTile.getRoundedYPos() == tileY) {
+                            setTileBounds();
+                            mSelectedTile.startThread(blankX, blankY);
+                            mState[blankIndex] = mState[tileX + tileY * mColumnCount];
+                            mState[tileX + tileY * mColumnCount] = 0;
+                            break;
+                        }
+                    }
+                }
+            }
+        }).start();
+    }
 
     public interface Callback {
         void stateChanged(int[] state);

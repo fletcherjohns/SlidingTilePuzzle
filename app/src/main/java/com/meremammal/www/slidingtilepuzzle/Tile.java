@@ -1,11 +1,9 @@
 package com.meremammal.www.slidingtilepuzzle;
 
 import android.content.Context;
+import android.graphics.Rect;
 import android.util.Log;
 import android.widget.ImageView;
-import android.widget.Toast;
-
-import java.util.Arrays;
 
 /**
  * Created by Fletcher on 18/11/2015.
@@ -15,6 +13,7 @@ public class Tile extends ImageView {
     private int mValue;
     private float mXPos;
     private float mYPos;
+    private Rect mMoveBounds;
     private Thread mSnapThread;
 
     public Tile(Context context, float XPos, float YPos, int value) {
@@ -56,8 +55,27 @@ public class Tile extends ImageView {
         return Math.round(mYPos);
     }
 
+    public void setBounds(Rect bounds) {
+        mMoveBounds = bounds;
+    }
+    public void moveTo(float x, float y) {
+
+        setXPos(Math.max(mMoveBounds.left,
+                Math.min(mMoveBounds.right, x)) / getWidth());
+        setYPos(Math.max(mMoveBounds.top,
+                Math.min(mMoveBounds.bottom, y)) / getWidth());
+    }
+    public void moveToPos(float x, float y) {
+        moveTo(x * getWidth(), y * getWidth());
+    }
+
     public void startThread() {
-        mSnapThread = new SnapThread();
+        mSnapThread = new Thread(new MoveTileRunnable());
+        mSnapThread.start();
+    }
+
+    public void startThread(int xPos, int yPos) {
+        mSnapThread = new Thread(new MoveTileRunnable(xPos, yPos));
         mSnapThread.start();
     }
 
@@ -67,51 +85,63 @@ public class Tile extends ImageView {
         }
     }
 
-    private class SnapThread extends Thread {
+    public boolean isMoving() {
+        return mSnapThread != null && mSnapThread.isAlive();
+    }
 
-        private float mVelocity;
-        private int mSnapTo;
+    /**
+     * This Runnable can be used to fling a tile or just to move it to another position.
+     */
+    private class MoveTileRunnable implements Runnable {
 
-        public SnapThread() {
+        private int mSnapToXPos = -1;
+        private int mSnapToYPos = -1;
+
+        /**
+         * Use this constructor to move the tile. Be careful to only call it with snapToXPos and
+         * snapToYPos of the blank space or the tiles current position. The tile also must be
+         * adjacent to the blank.
+         * @param snapToXPos
+         * @param snapToYPos
+         */
+        public MoveTileRunnable(int snapToXPos, int snapToYPos) {
+            mSnapToXPos = snapToXPos;
+            mSnapToYPos = snapToYPos;
+        }
+
+        /**
+         * Use this constructor to snap the tile into place after a TouchEvent
+         */
+        public MoveTileRunnable() {
+            mSnapToXPos = getRoundedXPos();
+            mSnapToYPos = getRoundedYPos();
         }
 
         @Override
         public void run() {
-            super.run();
-            if (getXPos() % 1 != 0) {
-                mSnapTo = Math.round(getXPos());
-                while (Math.abs(getXPos() - mSnapTo) > 0.001) {
-                    mVelocity = (mSnapTo - getXPos()) / 5;
-                    setXPos(getXPos() + mVelocity);
-                    post(new LayoutRunnable());
-                    try {
-                        sleep(10);
-                    } catch (InterruptedException e) {
-                        e.printStackTrace();
-                        return;
-                    }
-                }
-                setXPos(mSnapTo);
+
+            float velocityX;
+            float velocityY;
+            while (Math.abs(getXPos() - mSnapToXPos) > 0.01 ||
+                    Math.abs(getYPos() - mSnapToYPos) > 0.01) {
+
+                velocityX = (mSnapToXPos - getXPos()) / 3;
+                velocityY = (mSnapToYPos - getYPos()) / 3;
+
+                moveToPos(mXPos + velocityX, mYPos + velocityY);
+
                 post(new LayoutRunnable());
-            }
-            if (getYPos() % 1 != 0) {
-                mSnapTo = Math.round(getYPos());
-                while (Math.abs(getYPos() - mSnapTo) > 0.001) {
-                    mVelocity = (mSnapTo - getYPos()) / 5;
-                    setYPos(getYPos() + mVelocity);
-                    post(new LayoutRunnable());
-                    try {
-                        sleep(10);
-                    } catch (InterruptedException e) {
-                        Log.v("tag", "I've been interrupted :(");
-                        e.printStackTrace();
-                        return;
-                    }
+                try {
+                    Thread.sleep(10);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                    return;
                 }
-                setYPos(mSnapTo);
-                post(new LayoutRunnable());
             }
+            moveToPos(mSnapToXPos, mSnapToYPos);
+            post(new LayoutRunnable());
         }
+
     }
 
     private class LayoutRunnable implements Runnable {

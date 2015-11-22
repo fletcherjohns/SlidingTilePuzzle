@@ -3,7 +3,16 @@ package com.meremammal.www.slidingtilepuzzle;
 import android.app.Activity;
 import android.os.Bundle;
 
+import com.meremammal.www.slidingtilepuzzle.search_algorithms.ManhattanWithLinearConflictHeuristic;
+
 public class MainActivity extends Activity {
+
+    /* TODO Add buttons to the layout file for Shuffle, Hint and Solve
+      Add display for moves taken, minimum moves to goal.
+      Perhaps add temporary TextView to display Heuristic estimated cost for testing purposes.
+
+
+    */
 
     private PuzzleFrame mPuzzleFrame;
 
@@ -27,11 +36,11 @@ public class MainActivity extends Activity {
         mPuzzleFrame.post(new Runnable() {
             @Override
             public void run() {
-                mPuzzleFrame.init(mGoal, mColumnCount, new TileArea.Callback() {
+                mPuzzleFrame.init(mGoal, mColumnCount, new ManhattanWithLinearConflictHeuristic(4, mGoal), new TileArea.Callback() {
 
                     @Override
                     public void stateChanged(int[] state) {
-                        // If Activity is in game mode, check for winner. Otherwise do nothing.
+                        // TODO If Activity is in game mode, check for winner. Otherwise do nothing.
                     }
                 });
             }
