@@ -1,7 +1,10 @@
 package com.meremammal.www.slidingtilepuzzle;
 
 import android.content.Context;
+import android.os.Bundle;
+import android.os.Parcelable;
 import android.util.AttributeSet;
+import android.util.Log;
 import android.view.Gravity;
 import android.widget.FrameLayout;
 
@@ -15,7 +18,11 @@ import com.meremammal.www.slidingtilepuzzle.search_algorithms.Heuristic;
 */
 public class PuzzleFrame extends FrameLayout {
 
+    private static final String SUPER_PARCELABLE = "super_parcelable";
+    private static final String TILE_AREA_PARCELABLE = "tile_area_parcelable";
+
     private TileArea mTileArea;
+    private Parcelable mTileAreaInstanceState;
 
     public PuzzleFrame(Context context, AttributeSet attrs) {
         super(context, attrs);
@@ -38,13 +45,8 @@ public class PuzzleFrame extends FrameLayout {
         );
         params.gravity = Gravity.CENTER;
         mTileArea.setLayoutParams(params);
-        mTileArea.post(new Runnable() {
-            @Override
-            public void run() {
-                mTileArea.shuffleTiles();
-            }
-        });
         addView(mTileArea);
+        mTileArea.onRestoreInstanceState(mTileAreaInstanceState);
         invalidate();
     }
 
@@ -53,6 +55,28 @@ public class PuzzleFrame extends FrameLayout {
     }
 
     public void solve() {
+        mTileArea.solve();
+    }
 
+    public void hint() {
+        mTileArea.hint();
+    }
+
+    @Override
+    protected Parcelable onSaveInstanceState() {
+        Log.v("tag", "Puzzle save");
+        Bundle bundle = new Bundle();
+        bundle.putParcelable(SUPER_PARCELABLE, super.onSaveInstanceState());
+        bundle.putParcelable(TILE_AREA_PARCELABLE, mTileArea.onSaveInstanceState());
+        return bundle;
+    }
+
+    @Override
+    protected void onRestoreInstanceState(Parcelable state) {
+        Log.v("tag", "Puzzle restore");
+        Bundle bundle = (Bundle) state;
+        state = bundle.getParcelable(SUPER_PARCELABLE);
+        mTileAreaInstanceState = bundle.getParcelable(TILE_AREA_PARCELABLE);
+        super.onRestoreInstanceState(state);
     }
 }

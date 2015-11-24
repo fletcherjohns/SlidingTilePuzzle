@@ -90,7 +90,8 @@ public class Tile extends ImageView {
     }
 
     /**
-     * This Runnable can be used to fling a tile or just to move it to another position.
+     * This Runnable can be used to snap a tile to closest position or just to move
+     * it to specific position. This should be used wisely and after setting mBounds appropriately
      */
     private class MoveTileRunnable implements Runnable {
 

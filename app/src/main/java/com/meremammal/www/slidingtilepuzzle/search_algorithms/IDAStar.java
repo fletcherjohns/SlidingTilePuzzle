@@ -78,6 +78,7 @@ public class IDAStar implements Runnable {
             switch (mLimit = search(-1)) {
                 case FOUND_SOLUTION:
                     // We don't need to continue. Send solution via callback.
+                    Log.v("tag", "moves: " + Arrays.toString(mMoves));
                     mCallback.solutionFound(mMoves);
                     return;
                 case NO_SOLUTION:
@@ -108,13 +109,18 @@ public class IDAStar implements Runnable {
         // subtract moves back off that and check for goal.
         if (cost - mDepth == 0) {
             Log.v("tag", "Solution found in " + (System.currentTimeMillis() - mStartTime) + "ms");
-            Log.v("tag", "node: " + Arrays.toString(mNode));
-            Log.v("tag", "depth: " + mDepth);
-            Log.v("tag", "cost: " + mHeuristic.getEstimatedCost(mNode) + ", total: " + cost);
             mMoves = new int[mDepth];
             if (mDepth > 0) {
                 mMoves[mDepth - 1] = mNode[lastBlank];
             }
+            String nodeString = "";
+            for (int i = 0; i < mNode.length; i++) {
+                if (i % mColumnCount == 0) nodeString = nodeString.concat("\n");
+                nodeString = nodeString.concat(mNode[i] + ", ");
+            }
+            Log.v("tag", "node: " + nodeString);
+            Log.v("tag", "depth: " + mDepth);
+            Log.v("tag", "cost: " + mHeuristic.getEstimatedCost(mNode) + ", total: " + (mDepth + mHeuristic.getEstimatedCost(mNode)));
             return FOUND_SOLUTION;
         } else if (cost > mLimit) {
             return cost;
@@ -152,9 +158,9 @@ public class IDAStar implements Runnable {
                         // A solution was found during the search. Decrement mDepth, revertNode
                         // and add last move to mMoves.
                         mDepth--;
+                        // convenience method to swap back relevant tile with blank.
+                        revertNode(currentBlank, move);
                         if (mDepth > 0) {
-                            // convenience method to swap back relevant tile with blank.
-                            revertNode(currentBlank, move);
                             mMoves[mDepth - 1] = mNode[lastBlank];
                         }
                         // This is just for logging purposes. It logs nodes along solution path.

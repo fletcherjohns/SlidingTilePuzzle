@@ -1,5 +1,7 @@
 package com.meremammal.www.slidingtilepuzzle.search_algorithms;
 
+import android.util.Log;
+
 import org.apache.commons.lang3.ArrayUtils;
 
 /**
@@ -13,7 +15,7 @@ public class ManhattanWithLinearConflictHeuristic extends Heuristic<int[]> {
 
     @Override
     public int getEstimatedCost(int[] state) {
-        return getManhattan(state) + getLinearConflicts(state) * 2;
+        return getManhattan(state) + getLinearConflicts(state);
     }
 
     private int getManhattan(int[] state) {
@@ -31,21 +33,6 @@ public class ManhattanWithLinearConflictHeuristic extends Heuristic<int[]> {
         }
         return manhattan;
 
-    }
-
-    /*
-    Iterate over the array. If a tile is within 2 manhattan distance from goal
-     */
-
-    private int getTileRotations(int[] state) {
-        int index;
-        int[] tiles;
-        for (int x = 0; x < getColumnCount() - 1; x++) {
-            for (int y = 0; y < state.length / getColumnCount() - 1; y++) {
-
-            }
-        }
-        return 0;
     }
 
     private int getLinearConflicts(int[] state) {
@@ -82,8 +69,6 @@ public class ManhattanWithLinearConflictHeuristic extends Heuristic<int[]> {
                                 pos1 / getColumnCount() > pos2 / getColumnCount()) {
                             if (pos1 % getColumnCount() == strip) {
                                 linearConflicts += 2;
-                            } else {
-                                //linearConflicts += 0.5;
                             }
                         }
                     }
@@ -104,8 +89,6 @@ public class ManhattanWithLinearConflictHeuristic extends Heuristic<int[]> {
                                 pos1 % getColumnCount() > pos2 % getColumnCount()) {
                             if (pos1 / getColumnCount() == strip) {
                                 linearConflicts += 2;
-                            } else {
-                                //linearConflicts += 0.5;
                             }
                         }
                     }
