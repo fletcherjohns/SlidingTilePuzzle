@@ -20,6 +20,8 @@ public class IDAStar implements Runnable {
 
     private static DIRECTION[] DIRECTIONS = DIRECTION.values();
 
+    public static int sLimitCap = Integer.MAX_VALUE;
+
     /**
      * This array is initialised in the constructor and modified during the recursive process.
      * The only other array created is mMoves which is only created once when a solution is found.
@@ -73,19 +75,22 @@ public class IDAStar implements Runnable {
         // Main loop. Update mLimit each iteration until FOUND_SOLUTION, NO_SOLUTION or INTERRUPTED.
         // Any positive int < MAX_VALUE will be accepted as new limit.
         while (true) {
-            Log.v("tag", "limit: " + mLimit);
+            //Log.v("tag", "limit: " + mLimit);
+            mMoves = new int[mLimit];
             // Just set mLimit to whatever search(-1) returns, then run it through a switch block.
             switch (mLimit = search(-1)) {
                 case FOUND_SOLUTION:
                     // We don't need to continue. Send solution via callback.
-                    Log.v("tag", "moves: " + Arrays.toString(mMoves));
+                    //Log.v("tag", "moves: " + Arrays.toString(mMoves));
                     mCallback.solutionFound(mMoves);
                     return;
                 case NO_SOLUTION:
                     // Send failure message
+                    mCallback.solutionFound(null);
                     return;
                 case INTERRUPTED:
                     // Send failure message if necessary
+                    mCallback.solutionFound(null);
                     return;
                 default:
                     // Lowest failed node cost returned. mLimit already updated, continue loop.
@@ -94,6 +99,8 @@ public class IDAStar implements Runnable {
     }
 
     private int search(int lastBlank) {
+
+        if (mLimit > sLimitCap) return INTERRUPTED;
 
         /*
         First the cost is calculated and the node is checked for goal and limit.
@@ -109,19 +116,9 @@ public class IDAStar implements Runnable {
         // subtract moves back off that and check for goal.
         if (cost - mDepth == 0) {
             Log.v("tag", "Solution found in " + (System.currentTimeMillis() - mStartTime) + "ms");
-            mMoves = new int[mDepth];
-            if (mDepth > 0) {
-                mMoves[mDepth - 1] = mNode[lastBlank];
-            }
-            String nodeString = "";
-            for (int i = 0; i < mNode.length; i++) {
-                if (i % mColumnCount == 0) nodeString = nodeString.concat("\n");
-                nodeString = nodeString.concat(mNode[i] + ", ");
-            }
-            Log.v("tag", "node: " + nodeString);
-            Log.v("tag", "depth: " + mDepth);
-            Log.v("tag", "cost: " + mHeuristic.getEstimatedCost(mNode) + ", total: " + (mDepth + mHeuristic.getEstimatedCost(mNode)));
-            return FOUND_SOLUTION;
+            mCallback.solutionFound(mMoves.clone());
+            sLimitCap = Math.min(cost, sLimitCap);
+            return Integer.MAX_VALUE;
         } else if (cost > mLimit) {
             return cost;
         }
@@ -148,32 +145,15 @@ public class IDAStar implements Runnable {
             move = getPossibleMoves(lastBlank, direction);
             // returns -1 if that move is off the board or if it would undo last move.
             if (move != -1) {
+                mMoves[mDepth - 1] = mNode[move];
                 // convenience method to swap relevant tile with blank
                 progressNode(move);
+                if (mDepth > 0) {
+                }
                 // Here's where the recursion begins/continues.
                 // Calling search() will search this new node for acceptable children, and will
                 // return lowest failed node cost or other constant.
                 switch (cost = Math.min(cost, search(currentBlank))) {
-                    case FOUND_SOLUTION:
-                        // A solution was found during the search. Decrement mDepth, revertNode
-                        // and add last move to mMoves.
-                        mDepth--;
-                        // convenience method to swap back relevant tile with blank.
-                        revertNode(currentBlank, move);
-                        if (mDepth > 0) {
-                            mMoves[mDepth - 1] = mNode[lastBlank];
-                        }
-                        // This is just for logging purposes. It logs nodes along solution path.
-                        // Helpful for analysing the heuristic.
-                        String nodeString = "";
-                        for (int i = 0; i < mNode.length; i++) {
-                            if (i % mColumnCount == 0) nodeString = nodeString.concat("\n");
-                            nodeString = nodeString.concat(mNode[i] + ", ");
-                        }
-                        Log.v("tag", "node: " + nodeString);
-                        Log.v("tag", "depth: " + mDepth);
-                        Log.v("tag", "cost: " + mHeuristic.getEstimatedCost(mNode) + ", total: " + (mDepth + mHeuristic.getEstimatedCost(mNode)));
-                        return FOUND_SOLUTION;
                     case INTERRUPTED:
                         return INTERRUPTED;
                     default:

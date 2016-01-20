@@ -1,5 +1,7 @@
 package com.meremammal.www.slidingtilepuzzle;
 
+import android.animation.ArgbEvaluator;
+import android.animation.ObjectAnimator;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
@@ -15,7 +17,7 @@ import android.view.ViewGroup;
 import android.widget.FrameLayout;
 
 import com.meremammal.www.slidingtilepuzzle.search_algorithms.Heuristic;
-import com.meremammal.www.slidingtilepuzzle.search_algorithms.IDAStar;
+import com.meremammal.www.slidingtilepuzzle.search_algorithms.MultithreadIDAStar;
 
 import org.apache.commons.lang3.ArrayUtils;
 
@@ -26,27 +28,14 @@ import java.util.Random;
  * Created by Fletcher on 18/11/2015.
  *
  * <p>It utilizes a {@link com.meremammal.www.slidingtilepuzzle.search_algorithms.Heuristic} to
- * solve the puzzle. </p>
+ * giveUp the puzzle. </p>
  */
 public class TileArea extends ViewGroup {
 
     private static final String SUPER_PARCELABLE = "super_parcelable";
     private static final String CURRENT_STATE = "current_state";
     private static final String CURRENT_SOLUTION = "current_solution";
-    /*
-        *TODO Need to implement either a boolean field mBusy or use the State Machine pattern to allow
-        *  this ViewGroup to run background threads to shuffle or solve the tiles and block any touch
-        *  input or button presses coming from the Activity. Simplest way is to set mBusy and use an
-        *  if(!mBusy) in the onTouchEvent() method. Create method to move a tile from current position
-        *  to blank. Create method to move many tiles in series (shuffle). ie: loop (move random tile
-        *  adjacent to blank). Must keep track of last tile moved to avoid moving the same tile back and
-        *  forth.
-        *  Create public methods to be called from the Activity to start mThread to run shuffle or solve
-        *  methods. Set mBusy to true while thread is running and set to false when finished. Again use
-        *  if (!mBusy) to ignore call when thread already running.
-        *  Could also just use if (mThread != null && mThread.isAlive()) to check if the thread is
-        *  already in process.
-        */
+
     private static int mFlingVelocity;
 
     private int[] mState;
@@ -59,8 +48,10 @@ public class TileArea extends ViewGroup {
     private float mTouchOffsetY;
     private Heuristic<int[]> mHeuristic;
     private Thread mThread;
-    private Thread mSearchThread;
-    private int[] mSolution;
+    private MultithreadIDAStar mMultithreadIDAStar;
+    private int[][] mSolutions;
+
+    private TileAdapter mTileAdapter = new IvoryTileAdapter();
 
     public TileArea(Context context, final int[] goal, int columnCount, Heuristic<int[]> heuristic) {
         super(context);
@@ -83,8 +74,7 @@ public class TileArea extends ViewGroup {
                     if (mState[i] > 0) {
                         tile = new Tile(getContext(), i % mColumnCount, i / mColumnCount, mState[i]);
                         tile.setLayoutParams(params);
-                        tile.setBackgroundColor(Color.GRAY);
-                        tile.setImageBitmap(getBitmap(mState[i]));
+                        tile.setImageBitmap(mTileAdapter.getBitmap(mTileSize, mState[i], mColumnCount, mState.length / mColumnCount));
                         addView(tile);
                     }
                 }
@@ -100,7 +90,7 @@ public class TileArea extends ViewGroup {
         bundle.putParcelable(SUPER_PARCELABLE, super.onSaveInstanceState());
         Log.v("tag", "state in saveInstanceState() " + Arrays.toString(mState));
         bundle.putIntArray(CURRENT_STATE, mState);
-        bundle.putIntArray(CURRENT_SOLUTION, mSolution);
+        bundle.putSerializable(CURRENT_SOLUTION, mSolutions);
         return bundle;
     }
 
@@ -110,7 +100,7 @@ public class TileArea extends ViewGroup {
         Bundle bundle = (Bundle) state;
         state = bundle.getParcelable(SUPER_PARCELABLE);
         mState = bundle.getIntArray(CURRENT_STATE);
-        mSolution = bundle.getIntArray(CURRENT_SOLUTION);
+        mSolutions = (int[][]) bundle.getSerializable(CURRENT_SOLUTION);
         Log.v("tag", "state in restoreInstanceState() " + Arrays.toString(mState));
         super.onRestoreInstanceState(state);
     }
@@ -139,30 +129,6 @@ public class TileArea extends ViewGroup {
         }
     }
 
-    public Bitmap getBitmap(int value) {
-
-        Bitmap bitmap = Bitmap.createBitmap(mTileSize, mTileSize, Bitmap.Config.ARGB_8888);
-        Canvas canvas = new Canvas(bitmap);
-
-        Paint paint = new Paint();
-        paint.setAntiAlias(true);
-        paint.setTextSize(mTileSize * 0.8f);
-        paint.setStyle(Paint.Style.STROKE);
-        paint.setStrokeWidth(3);
-
-        Rect bounds = new Rect();
-        String text = String.valueOf(value);
-        // use text bounds to calculate the y position of the text.
-        paint.getTextBounds(text, 0, text.length(), bounds);
-        // measureText gives a better result for x position of text.
-        float textWidth = paint.measureText(text);
-
-        canvas.drawRect(1, 1, mTileSize - 1, mTileSize - 1, paint);
-        paint.setStyle(Paint.Style.FILL);
-        canvas.drawText(text, mTileSize / 2f - textWidth / 2f, mTileSize / 2f + bounds.height() / 2f, paint);
-        return bitmap;
-    }
-
     @Override
     public boolean onTouchEvent(MotionEvent event) {
 
@@ -187,9 +153,11 @@ public class TileArea extends ViewGroup {
                     return true;
 
                 case MotionEvent.ACTION_UP:
-                    mSelectedTile.startThread();
-                    updateState();
-                    mCallback.stateChanged(mState);
+                    if (updateState()) {
+                        searchForSolution();
+                        mCallback.stateChanged(mState);
+                    }
+                mSelectedTile.startThread();
                     return true;
                 default:
             }
@@ -213,30 +181,48 @@ public class TileArea extends ViewGroup {
         return null;
     }
 
-    public void updateState() {
+    public boolean updateState() {
+        boolean changed = false;
         Tile tile;
-        mState = new int[mState.length];
+        int tilePosition;
+        boolean[] positionsFilled = new boolean[mState.length];
         for (int i = 0; i < getChildCount(); i++) {
             tile = (Tile) getChildAt(i);
-            mState[tile.getRoundedXPos() + tile.getRoundedYPos() * mColumnCount] = tile.getValue();
+            tilePosition = tile.getRoundedXPos() + tile.getRoundedYPos() * mColumnCount;
+            positionsFilled[tilePosition] = true;
+            if (mState[tilePosition] != tile.getValue()) {
+                mState[tilePosition] = tile.getValue();
+                changed = true;
+            }
         }
-        searchForSolution();
+        mState[ArrayUtils.indexOf(positionsFilled, false)] = 0;
+        return changed;
     }
 
     private void searchForSolution() {
 
-        mSolution = null;
-        if (mSearchThread != null && mSearchThread.isAlive()) mSearchThread.interrupt();
-        mSearchThread = new Thread(new IDAStar(mState.clone(), mColumnCount, mHeuristic,
-                new IDAStar.Callback() {
+        mSolutions = null;
+        if (mMultithreadIDAStar != null) mMultithreadIDAStar.stop();
+        mMultithreadIDAStar = new MultithreadIDAStar(mState.clone(), mColumnCount, mHeuristic,
+                new MultithreadIDAStar.Callback() {
                     @Override
-                    public void solutionFound(int[] moves) {
-                        mSolution = moves;
-                        mCallback.solutionFound(moves);
-                        Log.v("tag", "callback solution : " + Arrays.toString(moves));
+                    public void solutionsFound(int[][] moves) {
+                        mSolutions = moves;
+                        mCallback.solutionsFound(moves);
+                        mMultithreadIDAStar = null;
+                        Log.v("tag", "callback solution : " + Arrays.deepToString(moves));
                     }
-                }));
-        mSearchThread.start();
+                });
+        mMultithreadIDAStar.start();
+    }
+
+    private ObjectAnimator getHintAnimator(Tile tile) {
+        ObjectAnimator animator;
+        animator = ObjectAnimator.ofInt(tile, "alpha", 255, 0, 255);
+        animator.setDuration(200);
+        animator.setEvaluator(new ArgbEvaluator());
+
+        return animator;
     }
 
     private void setTileBounds() {
@@ -273,6 +259,9 @@ public class TileArea extends ViewGroup {
     }
 
     public void shuffleTiles() {
+        if (mThread != null && mThread.isAlive()) {
+            return;
+        }
         (mThread = new Thread(new Runnable() {
             @Override
             public void run() {
@@ -337,28 +326,30 @@ public class TileArea extends ViewGroup {
                         }
                     }
                 }
+                mCallback.doneShuffle(mState);
                 searchForSolution();
             }
         })).start();
     }
 
-    public void solve() {
-        if (mThread != null && mThread.isAlive()) {
-            mThread.interrupt();
+    public boolean solve() {
+        if ((mThread != null && mThread.isAlive()) || mSolutions == null) {
+            return false;
         }
         (mThread = new Thread(new Runnable() {
             @Override
             public void run() {
 
                 Log.v("tag", "solution?");
-                if (mSolution != null) {
+                if (mSolutions != null) {
                     Log.v("tag", "we have a solution");
                     int blankIndex;
                     int blankX;
                     int blankY;
                     int tileIndex;
 
-                    for (int move : mSolution) {
+                    int[] solution = mSolutions[0];
+                    for (int move : solution) {
                         blankIndex = ArrayUtils.indexOf(mState, 0);
                         blankX = blankIndex % mColumnCount;
                         blankY = blankIndex / mColumnCount;
@@ -377,18 +368,31 @@ public class TileArea extends ViewGroup {
                             }
                         }
                     }
-                    mSolution = null;
+                    mSolutions = null;
+                    mCallback.stateChanged(mState);
                 }
             }
         })).start();
+        return true;
     }
 
-    public void hint() {
+    public boolean hint() {
+        if (mSolutions == null) return false;
 
+        Tile hintTile;
+        for (int i = 0; i < getChildCount(); i++) {
+            for (int[] solution : mSolutions) {
+                if ((hintTile = (Tile) getChildAt(i)).getValue() == solution[0]) {
+                    getHintAnimator(hintTile).start();
+                }
+            }
+        }
+        return true;
     }
 
     public interface Callback {
+        void doneShuffle(int[] state);
         void stateChanged(int[] state);
-        void solutionFound(int[] moves);
+        void solutionsFound(int[][] moves);
     }
 }

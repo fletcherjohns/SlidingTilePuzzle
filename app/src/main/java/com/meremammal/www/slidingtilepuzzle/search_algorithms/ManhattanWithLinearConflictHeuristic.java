@@ -4,6 +4,8 @@ import android.util.Log;
 
 import org.apache.commons.lang3.ArrayUtils;
 
+import java.util.Arrays;
+
 /**
  * Created by Fletcher on 15/10/2015.
  */

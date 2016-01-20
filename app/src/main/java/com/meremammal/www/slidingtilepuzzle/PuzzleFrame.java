@@ -50,16 +50,8 @@ public class PuzzleFrame extends FrameLayout {
         invalidate();
     }
 
-    public void shuffleTiles() {
-        mTileArea.shuffleTiles();
-    }
-
-    public void solve() {
-        mTileArea.solve();
-    }
-
-    public void hint() {
-        mTileArea.hint();
+    public TileArea getTileArea() {
+        return mTileArea;
     }
 
     @Override
